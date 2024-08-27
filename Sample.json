@@ -1,0 +1,57 @@
+[
+    {
+        "model": "products.Product",
+        "pk": 1,
+        "fields": {
+            "name": "Smartphone",
+            "description": "A high-end smartphone with a 6.5-inch display and 128GB storage.",
+            "price": "699.99",
+            "category": 1,
+            "in_stock": true
+        }
+    },
+    {
+        "model": "products.Product",
+        "pk": 2,
+        "fields": {
+            "name": "Laptop",
+            "description": "A lightweight laptop with 16GB RAM and 512GB SSD.",
+            "price": "1299.99",
+            "category": 2,
+            "in_stock": true
+        }
+    },
+    {
+        "model": "products.Product",
+        "pk": 3,
+        "fields": {
+            "name": "Wireless Headphones",
+            "description": "Noise-cancelling over-ear headphones with 30-hour battery life.",
+            "price": "199.99",
+            "category": 3,
+            "in_stock": true
+        }
+    },
+    {
+        "model": "products.Product",
+        "pk": 4,
+        "fields": {
+            "name": "Smartwatch",
+            "description": "A smartwatch with fitness tracking, GPS, and heart rate monitoring.",
+            "price": "249.99",
+            "category": 1,
+            "in_stock": true
+        }
+    },
+    {
+        "model": "products.Product",
+        "pk": 5,
+        "fields": {
+            "name": "Bluetooth Speaker",
+            "description": "Portable Bluetooth speaker with rich bass and 12-hour playtime.",
+            "price": "89.99",
+            "category": 3,
+            "in_stock": true
+        }
+    }
+]
