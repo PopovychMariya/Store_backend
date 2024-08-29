@@ -1,58 +1,104 @@
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, viewsets, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
+from rest_framework.decorators import action
 from rest_framework.authtoken.models import Token
-from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth import authenticate
 from rest_framework import status
+from .models import *
 from .serializers import *
+from products.models import Product
+from products.serializers import SellerProductListSerializer
 
 
-def metadata_instance(field_name, field):
-    return {
-        "name": field_name,
-        "label": field.label if field.label else field_name.capitalize(),
-        "type": "password" if "password" in field_name else "text",
-        "required": field.required,
-    }
-
-class RegistrationMetadataView(APIView):
-    def get(self, request, user_type=None):
-        if user_type == 'customer':
-            serializer = CustomerUserSerializer()
-        elif user_type == 'seller':
-            serializer = SellerUserSerializer()
-        else:
-            return Response({"error": "Invalid user type"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        metadata = []
-        for field_name, field in serializer.fields.items():
-            if field_name == 'user':
-                user_metadata = {
-                    "name": "user",
-                    "label": "User Information",
-                    "type": "nested",
-                    "required": True,
-                    "fields": [
-                        metadata_instance(user_field_name, user_field)
-                        for user_field_name, user_field in BaseUserSerializer().fields.items()
-                    ]
-                }
-                metadata.append(user_metadata)
-            else:
-                metadata.append(metadata_instance(field_name, field))
-        return Response({"fields": metadata})
-
-
-class RegistrationView(generics.CreateAPIView):
-    def get_serializer_class(self):
-        user_type = self.request.data.get('user_type')
-        if user_type == 'customer':
-            return CustomerUserSerializer
-        elif user_type == 'seller':
-            return SellerUserSerializer
-        raise ValidationError({"error": "Invalid user type"})
+class ProfileCreateViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.AllowAny]
     
+    @action(detail=False, methods=['post'])
+    def create(self, request):
+        user_type = request.data.get('user_type')
+        if user_type == 'customer':
+            serializer = CustomerUserSerializer(data=request.data)
+        elif user_type == 'seller':
+            serializer = SellerUserSerializer(data=request.data)
+        else:
+            raise ValidationError({"error": "Invalid user type"})
+        
+        user_data = request.data.get('user', {})
+        username = user_data.get('username')
+        password = user_data.get('password')
+
+        if not username:
+            raise ValidationError({"username": "This field is required."})
+        if not password:
+            raise ValidationError({"password": "This field is required."})
+
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+class ProfileViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        user = self.request.user
+        if hasattr(user, 'seller_profile'):
+            profile = user.seller_profile
+            user_type = "seller"
+        elif hasattr(user, 'customer_profile'):
+            profile = user.customer_profile
+            user_type = "customer"
+        else:
+            raise ValueError("No associated profile found for this user.")
+        
+        self.role = user_type
+        return profile
+
+    def get_serializer_class(self):
+        if hasattr(self.request.user, 'customer_profile'):
+            return CustomerUserSerializer
+        elif hasattr(self.request.user, 'seller_profile'):
+            return SellerUserSerializer
+        return BaseUserSerializer
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer_class = self.get_serializer_class()
+        serializer = serializer_class(instance)
+        data = serializer.data
+        data['user_type'] = self.role
+        return Response(data)
+
+    def update(self, request, *args, **kwargs):
+        user = request.user
+        user_data = request.data.get('user', {})
+
+        base_user_serializer = BaseUserSerializer(instance=user, data=user_data, partial=True)
+        if base_user_serializer.is_valid():
+            base_user_serializer.save()
+        else:
+            return Response(base_user_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        profile_data = request.data.copy()
+        profile_data.pop('user', None)
+
+        serializer_class = self.get_serializer_class()
+        profile = self.get_object()
+        serializer = serializer_class(instance=profile, data=profile_data, partial=True)
+        
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def perform_update(self, serializer):
+        serializer.save()
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.user.delete() if hasattr(instance, 'user') else instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 class LoginView(APIView):
     def post(self, request):
@@ -70,50 +116,16 @@ class LogoutView(APIView):
         except (AttributeError, Token.DoesNotExist):
             pass
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-class ProfileView(generics.RetrieveUpdateAPIView):
-    permission_classes = [permissions.IsAuthenticated]
     
-    def get_object(self):
-        user = self.request.user
-        if hasattr(user, 'customer_profile'):
-            return user.customer_profile
-        elif hasattr(user, 'seller_profile'):
-            return user.seller_profile
-        else:
-            return user
-
-    def get_serializer_class(self):
-        user = self.request.user
-
-        if hasattr(user, 'customer_profile'):
-            return CustomerUserSerializer
-        elif hasattr(user, 'seller_profile'):
-            return SellerUserSerializer
-        else:
-            return BaseUserSerializer
-        
-class ProfileDeleteView(generics.DestroyAPIView):
+class SellerShopView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_object(self):
-        user = self.request.user
-
-        if hasattr(user, 'customer_profile'):
-            return user.customer_profile
-        elif hasattr(user, 'seller_profile'):
-            return user.seller_profile
+    def get(self, request):
+        user = request.user
+        if user.is_seller():
+            seller_profile = user.seller_profile
+            products = Product.objects.filter(seller=seller_profile)
+            serializer = SellerProductListSerializer(products, many=True)
+            return Response(serializer.data)
         else:
-            return user
-
-    def perform_destroy(self, instance):
-        if isinstance(instance, get_user_model()):
-            instance.delete()
-        else:
-            instance.delete()
-            user = self.request.user
-            user.delete()
-
-    def delete(self, request, *args, **kwargs):
-        instance = self.get_object()
-        self.perform_destroy(instance)
+            return Response({"detail": "User is not a seller."}, status=400)

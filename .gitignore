@@ -1,0 +1,39 @@
+# Python
+*.pyc
+__pycache__/
+
+# Environment Variables
+.env
+
+# Django Stuff:
+db.sqlite3
+db.sqlite3-journal
+*.sqlite3
+
+# Migrations
+*/migrations/*
+!*/migrations/__init__.py
+
+# Static files
+staticfiles/
+media/
+
+# Local development settings
+settings_local.py
+
+# VS Code settings
+.vscode/
+
+# macOS files
+.DS_Store
+
+# Logs
+*.log
+
+# Virtual Environments
+venv/
+env/
+
+# Other
+
+Sample.json
